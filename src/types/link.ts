@@ -7,4 +7,5 @@ export interface Link {
   expiresAt?: string;    // ISO string from DB
   createdAt: string;
   status: 'active' | 'inactive';
+  isPaused: boolean;
 }

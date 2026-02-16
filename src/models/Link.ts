@@ -18,17 +18,21 @@ const LinkSchema = new Schema(
         status: {
             type: String,
             enum: {
-                message: "Status must be either 'active' or 'inactive'",
-                values: ["active", "inactive"],
+                message: "Status must be either 'active', 'expired', or 'paused'",
+                values: ["active", "expired", "paused"],
             },
             default: "active",
         },
         maxClicks: {
             type: Number
         },
-        expiresAt: { 
-            type: Date 
-        }
+        expiresAt: {
+            type: Date
+        },
+        isPaused: {
+            type: Boolean,
+            default: false,
+        },
     },
     { timestamps: true }
 )

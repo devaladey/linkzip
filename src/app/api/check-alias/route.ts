@@ -12,7 +12,6 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ available: false, error: 'No alias provided' }, { status: 400 });
   }
 
-  // Check if alias exists
   const existingLink = await Link.findOne({ shortCode: alias });
 
   const available = !existingLink;

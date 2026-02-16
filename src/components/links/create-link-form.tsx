@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -22,33 +22,41 @@ export function CreateLinkForm({ onSuccess }: CreateLinkFormProps) {
   const [aliasAvailable, setAliasAvailable] = useState<boolean | null>(null)
   const [isGenerating, setIsGenerating] = useState(false)
 
-  const handleCheckAlias = async (alias: string) => {
-    if (!alias) {
+  // New fields
+  const [expiresAt, setExpiresAt] = useState<string>('') // YYYY-MM-DD
+  const [maxClicks, setMaxClicks] = useState<number | ''>('')
+
+  // Debounce alias check
+  useEffect(() => {
+    if (!customAlias) {
       setAliasAvailable(null)
       return
     }
 
-    setIsChecking(true);
+    const timer = setTimeout(() => {
+      checkAlias(customAlias)
+    }, 500)
 
+    return () => clearTimeout(timer)
+  }, [customAlias])
+
+  const checkAlias = async (alias: string) => {
+    setIsChecking(true)
     try {
-      const response = await fetch(`/api/check-alias?alias=${encodeURIComponent(alias)}`)
-      const data = await response.json()
+      const res = await fetch(`/api/check-alias?alias=${encodeURIComponent(alias)}`)
+      const data = await res.json()
 
-      if (response.ok) {
+      if (res.ok) {
         setAliasAvailable(data.available)
-        if (!data.available) {
-          toast.error('This alias is already taken')
-        }
       } else {
         toast.error(data.error || 'Failed to check alias')
       }
     } catch (error) {
       console.error(error)
-      toast.error('An error occurred while checking the alias')
+      toast.error('Error checking alias')
     } finally {
       setIsChecking(false)
     }
-
   }
 
   const handleGenerate = async () => {
@@ -57,7 +65,6 @@ export function CreateLinkForm({ onSuccess }: CreateLinkFormProps) {
       return
     }
 
-    // Simple URL validation
     try {
       new URL(longUrl)
     } catch {
@@ -65,29 +72,36 @@ export function CreateLinkForm({ onSuccess }: CreateLinkFormProps) {
       return
     }
 
-    if (customAlias && !aliasAvailable) {
-      toast.error('Please choose a different alias')
+    if (customAlias && aliasAvailable === false) {
+      toast.error('Alias is taken. Choose another one.')
       return
     }
 
     setIsGenerating(true)
-
-    try {      const response = await fetch('/api/link', {
+    try {
+      const res = await fetch('/api/link', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ longUrl, customAlias }),
+        body: JSON.stringify({
+          longUrl,
+          customAlias,
+          enableQR,
+          expiresAt: expiresAt || null,
+          maxClicks: maxClicks || null,
+        }),
       })
 
-      const data = await response.json()
+      const data = await res.json()
 
-      if (response.ok) {
+      if (res.ok) {
         toast.success('Link created successfully!')
         onSuccess?.(data.shortCode)
-
         // Reset form
         setLongUrl('')
         setCustomAlias('')
         setAliasAvailable(null)
+        setExpiresAt('')
+        setMaxClicks('')
       } else {
         toast.error(data.error || 'Failed to create link')
       }
@@ -103,96 +117,93 @@ export function CreateLinkForm({ onSuccess }: CreateLinkFormProps) {
     <Card className="border-border bg-card p-6">
       <div className="space-y-6">
         <div>
-          <h3 className="text-lg font-semibold text-foreground">
-            Create New Link
-          </h3>
+          <h3 className="text-lg font-semibold text-foreground">Create New Link</h3>
           <p className="text-sm text-muted-foreground">
             Generate a short, memorable link for your content
           </p>
         </div>
 
-        <div className="space-y-4">
-          {/* Long URL Input */}
-          <div className="space-y-2">
-            <Label htmlFor="longUrl" className="text-foreground">
-              Long URL
-            </Label>
+        {/* Long URL */}
+        <div className="space-y-2">
+          <Label htmlFor="longUrl">Long URL</Label>
+          <Input
+            id="longUrl"
+            placeholder="https://example.com/very-long-url"
+            value={longUrl}
+            onChange={(e) => setLongUrl(e.target.value)}
+          />
+        </div>
+
+        {/* Custom Alias */}
+        <div className="space-y-2">
+          <Label htmlFor="alias">Custom Alias (Optional)</Label>
+          <div className="flex gap-2 items-center">
             <Input
-              id="longUrl"
-              placeholder="https://example.com/very-long-url-that-needs-shortening"
-              value={longUrl}
-              onChange={(e) => setLongUrl(e.target.value)}
-              className="border-border bg-input"
+              id="alias"
+              placeholder="mycustom"
+              value={customAlias}
+              onChange={(e) => setCustomAlias(e.target.value)}
             />
-            <p className="text-xs text-muted-foreground">
-              The original URL you want to shorten
-            </p>
+            {customAlias && (
+              <>
+                {isChecking ? (
+                  <Badge variant="outline">Checking...</Badge>
+                ) : aliasAvailable ? (
+                  <Badge className="bg-green-500/10 text-green-500 flex items-center">
+                    <Check className="h-3 w-3 mr-1" /> Available
+                  </Badge>
+                ) : (
+                  <Badge className="bg-red-500/10 text-red-500">Taken</Badge>
+                )}
+              </>
+            )}
           </div>
+        </div>
 
-          {/* Custom Alias Input */}
-          <div className="space-y-2">
-            <Label htmlFor="alias" className="text-foreground">
-              Custom Alias (Optional)
+        {/* Expiration Date */}
+        <div className="space-y-2">
+          <Label htmlFor="expiresAt">Expiration Date (Optional)</Label>
+          <Input
+            id="expiresAt"
+            type="date"
+            value={expiresAt}
+            onChange={(e) => setExpiresAt(e.target.value)}
+            min={new Date().toISOString().split('T')[0]}
+          />
+          <p className="text-xs text-muted-foreground">
+            The link will stop working after this date
+          </p>
+        </div>
+
+        {/* Maximum Clicks */}
+        <div className="space-y-2">
+          <Label htmlFor="maxClicks">Maximum Clicks (Optional)</Label>
+          <Input
+            id="maxClicks"
+            type="number"
+            min={1}
+            placeholder="Enter max number of clicks"
+            value={maxClicks}
+            onChange={(e) => setMaxClicks(e.target.value ? parseInt(e.target.value) : '')}
+          />
+          <p className="text-xs text-muted-foreground">
+            The link will stop working after this many clicks
+          </p>
+        </div>
+
+        {/* QR Code Toggle */}
+        <div className="flex items-center gap-3 border border-border rounded-lg p-4 bg-secondary/20">
+          <Checkbox
+            id="qr"
+            checked={enableQR}
+            onCheckedChange={(checked) => setEnableQR(!!checked)}
+          />
+          <div className="flex-1">
+            <Label htmlFor="qr" className="cursor-pointer font-medium">
+              Generate QR Code
             </Label>
-            <div className="flex gap-2">
-              <div className="flex-1">
-                <Input
-                  id="alias"
-                  placeholder="mycustom"
-                  value={customAlias}
-                  onChange={(e) => {
-                    setCustomAlias(e.target.value)
-                    if (e.target.value) {
-                      handleCheckAlias(e.target.value)
-                    } else {
-                      setAliasAvailable(null)
-                    }
-                  }}
-                  className="border-border bg-input"
-                />
-              </div>
-              {customAlias && (
-                <div className="flex items-center">
-                  {isChecking ? (
-                    <Badge variant="outline">Checking...</Badge>
-                  ) : aliasAvailable ? (
-                    <Badge className="bg-green-500/10 text-green-500">
-                      <Check className="h-3 w-3 mr-1" />
-                      Available
-                    </Badge>
-                  ) : (
-                    <Badge className="bg-red-500/10 text-red-500">
-                      Taken
-                    </Badge>
-                  )}
-                </div>
-              )}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              linkf.io/<span className="text-accent">{customAlias || 'your-alias'}</span>
-            </p>
           </div>
-
-          {/* QR Code Toggle */}
-          <div className="flex items-center gap-3 rounded-lg border border-border bg-secondary/20 p-4">
-            <Checkbox
-              id="qr"
-              checked={enableQR}
-              onCheckedChange={(checked) => setEnableQR(!!checked)}
-            />
-            <div className="flex-1">
-              <Label
-                htmlFor="qr"
-                className="text-foreground cursor-pointer font-medium"
-              >
-                Generate QR Code
-              </Label>
-              <p className="text-xs text-muted-foreground">
-                Create a QR code for easy sharing
-              </p>
-            </div>
-            <QrCode className="h-5 w-5 text-accent" />
-          </div>
+          <QrCode className="h-5 w-5 text-accent" />
         </div>
 
         <Button

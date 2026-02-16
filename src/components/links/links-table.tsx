@@ -5,84 +5,66 @@ import { Card } from '@/components/ui/card'
 import {
   Table,
   TableBody,
-  TableCell,
-  TableHead,
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
+import { TableHead as Th } from '@/components/ui/table'
 import { Button } from '@/components/ui/button'
-import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
-import {
-  Copy,
-  ExternalLink,
-  Trash2,
-  Search,
-  ChevronLeft,
-  ChevronRight,
-} from 'lucide-react'
+import { Search, ChevronLeft, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
-import { useQuery } from '@tanstack/react-query'
 import { Link } from '@/types/link'
+import LinksTableRow from './links-table-row'
 
-export function LinksTable() {
+interface LinksTableProps {
+  linksData?: Link[]
+}
+
+export function LinksTable({ linksData }: LinksTableProps) {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<string | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
-  const [loadingDelete, setLoadingDelete] = useState(false)
   const itemsPerPage = 10
 
-  const { data: linksData } = useQuery<Link[]>({
-    queryKey: ['links'],
-    queryFn: async () => {
-      return fetch("/api/link").then(res => res.json()).then(data => data.links);
-    },
-  });
+  // Compute effective status for each link
+  const getLinkEffectiveStatus = (link: Link): 'active' | 'paused' | 'expired' => {
+    const now = new Date()
+    if (link.isPaused) return 'paused'
+    if (
+      (link.expiresAt && new Date(link.expiresAt) < now) ||
+      (link.maxClicks && link.clicks >= link.maxClicks)
+    ) {
+      return 'expired'
+    }
+    return 'active'
+  }
 
-  console.log("Fetched links:", linksData) // Log the fetched data;
-
-  // Filter links
+  // Filter links based on search and status
   const filteredLinks = linksData?.filter((link) => {
     const matchesSearch =
       link.shortCode.toLowerCase().includes(searchTerm.toLowerCase()) ||
       link.longUrl.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesStatus = !statusFilter || link.status === statusFilter
+
+    const effectiveStatus = getLinkEffectiveStatus(link)
+    const matchesStatus = !statusFilter || effectiveStatus === statusFilter
 
     return matchesSearch && matchesStatus
-  }) ?? [];
+  }) ?? []
 
-  // Pagination
+  // Pagination logic
   const totalPages = Math.ceil(filteredLinks.length / itemsPerPage)
   const paginatedLinks = filteredLinks.slice(
     (currentPage - 1) * itemsPerPage,
     currentPage * itemsPerPage
   )
 
+  // Clipboard copy handler
   const handleCopy = (text: string) => {
     navigator.clipboard.writeText(text)
     toast.success('Copied to clipboard')
   }
 
-  const handleDelete = (linkId: string) => {
-    setLoadingDelete(true);
-    try {
-      fetch(`/api/link/${linkId}`, {
-        method: 'DELETE',
-      }).then(res => res.json()).then(data => {
-        if (data.success) {
-          toast.success('Link deleted')
-        } else {
-          toast.error(data.error || 'Failed to delete link')
-        }
-      })
-    } catch (error) {
-      console.error(error)
-      toast.error('An error occurred while deleting the link')
-    } finally {
-      setLoadingDelete(false);
-    }
-  }
-
+  // Map status to colors
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'active':
@@ -134,14 +116,12 @@ export function LinksTable() {
           </div>
 
           <div className="flex gap-2">
-            {['all', 'active', 'expired', 'paused'].map((status) => (
+            {['all', 'active', 'paused', 'expired'].map((status) => (
               <Button
                 key={status}
-                variant={statusFilter === (status === 'all' ? null : status) ? 'default' : 'outline'}
                 size="sm"
-                onClick={() =>
-                  setStatusFilter(status === 'all' ? null : status)
-                }
+                variant={statusFilter === (status === 'all' ? null : status) ? 'default' : 'outline'}
+                onClick={() => setStatusFilter(status === 'all' ? null : status)}
               >
                 {status.charAt(0).toUpperCase() + status.slice(1)}
               </Button>
@@ -157,86 +137,26 @@ export function LinksTable() {
             <Table>
               <TableHeader>
                 <TableRow className="border-border hover:bg-transparent">
-                  <TableHead className="text-muted-foreground">
-                    Short Link
-                  </TableHead>
-                  <TableHead className="text-muted-foreground">
-                    Original URL
-                  </TableHead>
-                  <TableHead className="text-right text-muted-foreground">
-                    Clicks
-                  </TableHead>
-                  <TableHead className="text-center text-muted-foreground">
-                    Status
-                  </TableHead>
-                  <TableHead className="text-muted-foreground">
-                    Created
-                  </TableHead>
-                  <TableHead className="text-right text-muted-foreground">
-                    Actions
-                  </TableHead>
+                  <Th className="text-muted-foreground">Short Link</Th>
+                  <Th className="text-muted-foreground">Original URL</Th>
+                  <Th className="text-right text-muted-foreground">Clicks</Th>
+                  <Th className="text-right text-muted-foreground">Max Clicks</Th>
+                  <Th className="text-center text-muted-foreground">Status</Th>
+                  <Th className="text-muted-foreground">Created</Th>
+                  <Th className="text-muted-foreground">Expires At</Th>
+                  <Th className="text-right text-muted-foreground">Actions</Th>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {paginatedLinks.map((link) => {
-
-                  const toLink = `${window.location.origin}/${link.shortCode}`;
-
-                  return (
-                    <TableRow key={link._id} className="border-border hover:bg-secondary/30">
-                      <TableCell className="font-mono text-sm opacity-50">
-                        linkf.io/{link.shortCode}
-                      </TableCell>
-                      <TableCell className="max-w-xs text-sm text-foreground">
-                        <span className="truncate line-clamp-1">
-                          {link.longUrl.replace('https://', '')}
-                        </span>
-                      </TableCell>
-                      <TableCell className="text-right font-semibold text-foreground">
-                        {link.clicks.toLocaleString()}
-                      </TableCell>
-                      <TableCell className="text-center">
-                        <Badge className={getStatusColor(link.status)}>
-                          {link.status.charAt(0).toUpperCase() +
-                            link.status.slice(1)}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {formatDate(new Date(link.createdAt))}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <div className="flex justify-end gap-2">
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() =>
-                              handleCopy(toLink)
-                            }
-                            className="h-8 w-8"
-                          >
-                            <Copy className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => window.open(toLink, '_blank')}
-                            className="h-8 w-8"
-                          >
-                            <ExternalLink className="h-4 w-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => handleDelete(link.shortCode)}
-                            className="h-8 w-8 hover:text-red-500"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  )
-                })}
+                {paginatedLinks.map((link) => (
+                  <LinksTableRow
+                    key={link._id}
+                    link={link}
+                    handleCopy={handleCopy}
+                    getStatusColor={getStatusColor}
+                    formatDate={formatDate}
+                  />
+                ))}
               </TableBody>
             </Table>
           </div>
@@ -259,9 +179,7 @@ export function LinksTable() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() =>
-                    setCurrentPage((p) => Math.min(totalPages, p + 1))
-                  }
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                   disabled={currentPage === totalPages}
                 >
                   <ChevronRight className="h-4 w-4" />

@@ -17,6 +17,10 @@ export default async function ShortLinkPage({
     return redirect("/");
   }
 
+  if(link.isPaused) {
+    return redirect("/");
+  }
+
   const now = new Date();
   if (
     (link.maxClicks && link.clicks >= link.maxClicks) ||
